@@ -28,7 +28,7 @@
 # GAP-05  ADDRESSED here — SG here, vpc_config nested in main.tf
 #         Original: main.tf aws_lambda_function.intake (no VPC).
 #         Fix: vpc_config on the function + aws_security_group.lambda below.
-#         Still missing: AWSLambdaVPCAccessExecutionRole, NAT or endpoints.
+#         ENI IAM attached. Still missing: NAT or VPC endpoints.
 #         Policy: detect vpc_config.
 #
 # GAP-06  NOT ADDRESSED — out of scope

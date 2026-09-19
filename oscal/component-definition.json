@@ -1,0 +1,209 @@
+{
+  "component-definition": {
+    "uuid": "170ba3e9-5b15-4b29-8e27-ec6a05ae23c6",
+    "metadata": {
+      "title": "Acme Health patient-intake API — CGE-P capstone component",
+      "last-modified": "2026-09-19T19:17:00.000Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.3",
+      "parties": [
+        {
+          "uuid": "8ff11e04-be9d-4096-8428-323f0c987cbb",
+          "type": "organization",
+          "name": "Acme Health (markscout-lumon capstone)"
+        }
+      ],
+      "links": [
+        {
+          "rel": "canonical",
+          "href": "https://csrc.nist.gov/pubs/sp/800/66/r2/final",
+          "text": "NIST SP 800-66 Rev. 2 — Implementing the HIPAA Security Rule"
+        },
+        {
+          "rel": "alternate",
+          "href": "https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/SP_800_66_2_0_0/home",
+          "text": "CPRT catalog export for SP 800-66 Rev. 2 (2.0.0)"
+        }
+      ]
+    },
+    "components": [
+      {
+        "uuid": "8245f183-5676-4e46-a33b-fced5b8c06b6",
+        "type": "service",
+        "title": "Acme Health patient-intake API with GRC wrap",
+        "description": "Inherited CGE-P starter (API Gateway HTTP API, Lambda, DynamoDB, S3 uploads, VPC) plus the HIPAA/800-66 controls wrapped around it: customer CMK, TLS-deny bucket policy, versioning, Lambda VPC placement, Object Lock evidence vault, CloudTrail, and a GitHub Actions plan/policy/apply/sign/upload gate.",
+        "purpose": "Ingest patient-intake submissions over HTTPS and store PHI only under the controls selected in oscal/profiles/cge-p-minimum.json.",
+        "responsible-roles": [
+          {
+            "role-id": "provider",
+            "party-uuids": ["8ff11e04-be9d-4096-8428-323f0c987cbb"]
+          }
+        ],
+        "control-implementations": [
+          {
+            "uuid": "6bda49bb-7e8e-407f-b8d2-b9172c2d8f80",
+            "source": "https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/SP_800_66_2_0_0/home",
+            "description": "NIST SP 800-66 Rev. 2 overlay of the HIPAA Security Rule. control-id values are 800-66 section numbers (the overlay IDs). HIPAA 164.x citations are props. This is not NIST SP 800-53.",
+            "implemented-requirements": [
+              {
+                "uuid": "432f8d38-6f08-419f-999f-d17988e3c9dc",
+                "control-id": "5.3.1",
+                "description": "GAP-01. Encryption at rest for PHI objects in the uploads bucket uses a customer CMK (aws_kms_key.phi) via SSE-KMS, not the starter's SSE-S3 default. Policy policies/gap01_s3_cmk.rego fails the plan if kms_master_key_id is missing.",
+                "props": [
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap", "value": "GAP-01" },
+                  { "name": "hipaa", "value": "164.312(a)(2)(iv)" },
+                  { "name": "sp-800-66", "value": "5.3.1" },
+                  { "name": "policy", "value": "policies/gap01_s3_cmk.rego" },
+                  { "name": "terraform-address", "value": "aws_kms_key.phi" },
+                  { "name": "terraform-address", "value": "aws_s3_bucket.uploads" },
+                  { "name": "terraform-address", "value": "aws_s3_bucket_server_side_encryption_configuration.uploads" },
+                  { "name": "arn", "value": "arn:aws:kms:us-east-1:140421379759:key/23982b8c-7c20-4560-a8a0-f657b78c2297" },
+                  { "name": "arn", "value": "arn:aws:s3:::acme-health-intake-uploads-160174f2" }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz",
+                    "text": "Signed apply-on-merge bundle (plan.json + Conftest) for GitHub Actions run 35463669806."
+                  },
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz.sig.bundle",
+                    "text": "Cosign keyless signature bundle for the same object."
+                  }
+                ]
+              },
+              {
+                "uuid": "37ccace8-b4d2-45d7-9087-69a89494e2c5",
+                "control-id": "5.3.1",
+                "description": "GAP-02. DynamoDB table aws_dynamodb_table.intake encrypts with the same customer CMK (server_side_encryption.kms_key_arn), not an AWS-owned key. Policy policies/gap02_ddb_cmk.rego fails the plan if kms_key_arn is absent.",
+                "props": [
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap", "value": "GAP-02" },
+                  { "name": "hipaa", "value": "164.312(a)(2)(iv)" },
+                  { "name": "sp-800-66", "value": "5.3.1" },
+                  { "name": "policy", "value": "policies/gap02_ddb_cmk.rego" },
+                  { "name": "terraform-address", "value": "aws_dynamodb_table.intake" },
+                  { "name": "terraform-address", "value": "aws_kms_key.phi" },
+                  { "name": "arn", "value": "arn:aws:dynamodb:us-east-1:140421379759:table/acme-health-intake-submissions-160174f2" }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz",
+                    "text": "Signed apply-on-merge bundle, run 35463669806."
+                  }
+                ]
+              },
+              {
+                "uuid": "d039acf6-449d-4e32-9faf-b9f84f16232f",
+                "control-id": "5.3.5",
+                "description": "GAP-03. aws_s3_bucket_policy.uploads denies s3:* when aws:SecureTransport is false so PHI cannot be put or got over HTTP. Policy policies/gap03_s3_tls.rego failed PR #1 (run 35463292244) and passed PR #2 after the deny was added.",
+                "props": [
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap", "value": "GAP-03" },
+                  { "name": "hipaa", "value": "164.312(e)(1)" },
+                  { "name": "sp-800-66", "value": "5.3.5" },
+                  { "name": "policy", "value": "policies/gap03_s3_tls.rego" },
+                  { "name": "terraform-address", "value": "aws_s3_bucket_policy.uploads" },
+                  { "name": "arn", "value": "arn:aws:s3:::acme-health-intake-uploads-160174f2" }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463292244/evidence-35463292244-24797970d2f2569563ba54f9bd20dca0af09aae1.tar.gz",
+                    "text": "Signed fail-closed bundle from blocked PR #1 (Conftest GAP-03)."
+                  },
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz",
+                    "text": "Signed apply-on-merge bundle after the TLS deny landed on main."
+                  }
+                ]
+              },
+              {
+                "uuid": "ebe8722c-8fd9-4961-987f-5a2e59f19bba",
+                "control-id": "5.1.7",
+                "description": "GAP-04. aws_s3_bucket_versioning.uploads is Enabled so PHI overwrites are recoverable (800-66 Table 14 data backup plan). Policy policies/gap04_s3_versioning.rego fails the plan if status is not Enabled.",
+                "props": [
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap", "value": "GAP-04" },
+                  { "name": "hipaa", "value": "164.308(a)(7)" },
+                  { "name": "sp-800-66", "value": "5.1.7" },
+                  { "name": "policy", "value": "policies/gap04_s3_versioning.rego" },
+                  { "name": "terraform-address", "value": "aws_s3_bucket_versioning.uploads" },
+                  { "name": "arn", "value": "arn:aws:s3:::acme-health-intake-uploads-160174f2" }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz",
+                    "text": "Signed apply-on-merge bundle, run 35463669806."
+                  }
+                ]
+              },
+              {
+                "uuid": "4f758263-f474-4326-abd8-cdda4cb96258",
+                "control-id": "5.3.5",
+                "description": "GAP-05. aws_lambda_function.intake has vpc_config on private subnets with aws_security_group.lambda (egress 443 only). 800-66 has no separate boundary section; private-subnet placement is how this component limits who can intercept PHI in transit. Partial: no NAT or VPC endpoints, so runtime egress to AWS APIs is still incomplete.",
+                "props": [
+                  { "name": "implementation-status", "value": "partial" },
+                  { "name": "gap", "value": "GAP-05" },
+                  { "name": "hipaa", "value": "164.312(e)(1)" },
+                  { "name": "sp-800-66", "value": "5.3.5" },
+                  { "name": "policy", "value": "policies/gap05_lambda_vpc.rego" },
+                  { "name": "terraform-address", "value": "aws_lambda_function.intake" },
+                  { "name": "terraform-address", "value": "aws_security_group.lambda" },
+                  { "name": "arn", "value": "arn:aws:lambda:us-east-1:140421379759:function:acme-health-intake-handler-160174f2" },
+                  { "name": "vpc-id", "value": "vpc-09bbec522cc8f570e" },
+                  { "name": "subnet-id", "value": "subnet-0d3a60fadf1c8b317" },
+                  { "name": "subnet-id", "value": "subnet-07ec8d8848e27513a" }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz",
+                    "text": "Signed apply-on-merge bundle, run 35463669806."
+                  }
+                ]
+              },
+              {
+                "uuid": "eb334b6b-826e-4031-8916-34ffbbe450a4",
+                "control-id": "5.3.2",
+                "description": "GRC wrap around the starter, not a named GAPS.md item. aws_cloudtrail.mgmt is a multi-region trail with log-file validation. aws_s3_bucket.vault has Object Lock GOVERNANCE. The GitHub Actions role aws_iam_role.grc_gate plans, applies on merge to main, Cosign-signs the evidence tarball keyless, and uploads it to the vault. No Rego detector; Terraform plus the pipeline are the implementation.",
+                "props": [
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "hipaa", "value": "164.312(b)" },
+                  { "name": "sp-800-66", "value": "5.3.2" },
+                  { "name": "terraform-address", "value": "aws_cloudtrail.mgmt" },
+                  { "name": "terraform-address", "value": "aws_s3_bucket.vault" },
+                  { "name": "terraform-address", "value": "aws_iam_role.grc_gate" },
+                  { "name": "arn", "value": "arn:aws:s3:::acme-health-intake-grc-evidence-vault-160174f2" },
+                  { "name": "arn", "value": "arn:aws:iam::140421379759:role/cgep-grc-gate" }
+                ],
+                "links": [
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz",
+                    "text": "Signed apply-on-merge evidence object in the Object Lock vault."
+                  },
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/evidence-35463669806-9465e9d44a8c23c37dbf87c20620df16da7da95c.tar.gz.sig.bundle",
+                    "text": "Cosign keyless signature over that object."
+                  },
+                  {
+                    "rel": "evidence",
+                    "href": "s3://acme-health-intake-grc-evidence-vault-160174f2/runs/35463669806/receipt.json",
+                    "text": "Vault receipt (run_id, version_id, sha256, commit) for run 35463669806."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
