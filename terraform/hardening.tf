@@ -16,10 +16,10 @@
 #         Fix: nested server_side_encryption { kms_key_arn } on the table.
 #         Policy: detect customer kms_key_arn.
 #
-# GAP-03  NOT ADDRESSED in Terraform — policy detect only
+# GAP-03  ADDRESSED here (passing-gate PR)
 #         Original: main.tf aws_s3_bucket.uploads (no TLS deny).
-#         No aws_s3_bucket_policy here. Suite must fail if
-#         aws:SecureTransport deny is missing.
+#         Fix: aws_s3_bucket_policy.uploads Deny when
+#         aws:SecureTransport is false. Policy: detect that statement.
 #
 # GAP-04  ADDRESSED here
 #         Original: main.tf aws_s3_bucket.uploads (versioning off).
@@ -57,8 +57,27 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "uploads" {
   }
 }
 
-# GAP-03: left open. No aws:SecureTransport deny; policy suite is expected
-# to fail the plan if this gap is re-introduced or still present.
+# GAP-03: deny HTTP to the uploads bucket (HIPAA 164.312(e)(1) / 800-66 5.3.5).
+resource "aws_s3_bucket_policy" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.uploads.arn,
+        "${aws_s3_bucket.uploads.arn}/*",
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+}
 
 # GAP-04: versioning so PHI overwrites are recoverable.
 resource "aws_s3_bucket_versioning" "uploads" {

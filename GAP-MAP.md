@@ -12,7 +12,7 @@ In scope for this submission: **GAP-01 through GAP-05**. GAP-06 through GAP-08 a
 |---|---|---|---|---|
 | **GAP-01** | `terraform/main.tf` → `aws_s3_bucket.uploads` | Bucket uses default SSE-S3. No customer CMK. | **Closed.** CMK: `terraform/kms.tf` → `aws_kms_key.phi`. Bucket encryption: `terraform/hardening.tf` → `aws_s3_bucket_server_side_encryption_configuration.uploads` (`sse_algorithm = "aws:kms"`, `kms_master_key_id = aws_kms_key.phi.arn`). | **Detect.** Fail the plan if default encryption is not SSE-KMS with a CMK ARN. |
 | **GAP-02** | `terraform/main.tf` → `aws_dynamodb_table.intake` | Table uses the AWS-owned default key. | **Closed (nested).** `server_side_encryption` on the same table in `terraform/main.tf`, `kms_key_arn = aws_kms_key.phi.arn`. Cannot be a sibling resource. Key remains in `terraform/kms.tf`. | **Detect.** Fail the plan if the table has no customer `kms_key_arn`. |
-| **GAP-03** | `terraform/main.tf` → `aws_s3_bucket.uploads` | No bucket policy denying `aws:SecureTransport = false`. | **Not closed in Terraform.** Left open on purpose so the suite has a known fail-closed case. Comment only in `terraform/hardening.tf`. | **Detect only.** Fail the plan if the uploads bucket has no TLS-deny statement. This is the policy-only control in the pass set. |
+| **GAP-03** | `terraform/main.tf` → `aws_s3_bucket.uploads` | No bucket policy denying `aws:SecureTransport = false`. | **Closed** on the passing-gate PR. `terraform/hardening.tf` → `aws_s3_bucket_policy.uploads` (`Deny` when `aws:SecureTransport` is false). PR #1 left this open so the gate failed. | **Detect.** Fail the plan if the uploads bucket has no TLS-deny statement. |
 | **GAP-04** | `terraform/main.tf` → `aws_s3_bucket.uploads` | Versioning off. PHI overwrites are unrecoverable. | **Closed.** `terraform/hardening.tf` → `aws_s3_bucket_versioning.uploads` (`status = "Enabled"`). | **Detect.** Fail the plan if versioning is not `Enabled`. |
 | **GAP-05** | `terraform/main.tf` → `aws_lambda_function.intake` | Function runs in the default Lambda network, not the starter VPC. | **Partial.** `vpc_config` nested on `aws_lambda_function.intake` in `terraform/main.tf` (private subnets). SG: `terraform/hardening.tf` → `aws_security_group.lambda`. Still missing VPC ENI IAM (`AWSLambdaVPCAccessExecutionRole`) and NAT or VPC endpoints. | **Detect.** Fail the plan if the function has no `vpc_config`. |
 
@@ -30,7 +30,7 @@ In scope for this submission: **GAP-01 through GAP-05**. GAP-06 through GAP-08 a
 |---|---|
 | `terraform/main.tf` | Inherited workload. Original gap sites. Nested fixes: DynamoDB SSE (GAP-02), Lambda `vpc_config` (GAP-05). |
 | `terraform/kms.tf` | Shared PHI CMK used by GAP-01 and GAP-02. |
-| `terraform/hardening.tf` | Sibling overrides: S3 SSE-KMS (GAP-01), S3 versioning (GAP-04), Lambda SG (GAP-05). GAP-03 deliberately omitted. |
+| `terraform/hardening.tf` | Sibling overrides: S3 SSE-KMS (GAP-01), TLS deny (GAP-03), S3 versioning (GAP-04), Lambda SG (GAP-05). |
 | `policies/*.rego` | Planned detectors for GAP-01 through GAP-05. Not present yet. |
 
 ## Why some fixes are not in `hardening.tf`

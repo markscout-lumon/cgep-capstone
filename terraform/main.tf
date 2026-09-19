@@ -137,8 +137,7 @@ resource "aws_s3_bucket" "uploads" {
   bucket = "${local.name_prefix}-uploads-${local.suffix}"
 }
 
-# GAP-01 / GAP-04 closed as sibling resources in hardening.tf.
-# GAP-03 left open: no aws:SecureTransport deny (policy-detectable).
+# GAP-01 / GAP-03 / GAP-04 closed as sibling resources in hardening.tf.
 
 ######################################################################
 # Lambda — the intake handler.
