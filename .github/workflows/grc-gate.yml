@@ -1,0 +1,153 @@
+# .github/workflows/grc-gate.yml
+# Capstone Layer 3: one workflow, five named steps in order.
+name: grc-gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write       # AWS OIDC + Cosign keyless (Lab 4.4)
+  contents: read
+  pull-requests: write  # PR comments from the gate
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: terraform
+
+jobs:
+  grc-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+          terraform_wrapper: false
+
+      - name: Install Conftest
+        run: |
+          curl -fsSL https://github.com/open-policy-agent/conftest/releases/download/v0.50.0/conftest_0.50.0_Linux_x86_64.tar.gz \
+            | tar -xz -C /usr/local/bin conftest
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: "1. Plan the Terraform"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform init -input=false
+          terraform validate
+          # -input=false: missing vars fail the job instead of hanging the runner.
+          terraform plan -out=tfplan -input=false -no-color \
+            -var="github_org=${{ github.repository_owner }}" \
+            -var="github_repo=${{ github.event.repository.name }}" \
+            | tee plan.txt
+          terraform show -json tfplan > plan.json
+
+      - name: "2. Policy check with Conftest"
+        id: conftest
+        run: |
+          chmod +x scripts/policy-gate.sh
+          scripts/policy-gate.sh --workspace "$TF_WORKING_DIR" --policy policies
+          mkdir -p evidence/lab-4-3
+          cp evidence/conftest/conftest-results.json evidence/lab-4-3/conftest-results.json
+          cp "$TF_WORKING_DIR/plan.json" evidence/lab-4-3/plan.json
+
+      - name: Copy plan into evidence
+        # Extra. Stash plan text/json for the signed bundle even if a later step fails.
+        if: always()
+        run: |
+          mkdir -p evidence/lab-4-3
+          cp "$TF_WORKING_DIR"/plan.json evidence/lab-4-3/plan.json
+          cp "$TF_WORKING_DIR"/plan.txt  evidence/lab-4-3/plan.txt
+
+      - name: "3. Apply on merge to main"
+        # Capstone-only. Labs stopped at check. Apply the saved plan, never on a PR.
+        id: apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.conftest.outcome == 'success'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform apply -input=false -auto-approve tfplan | tee apply.txt
+          cp apply.txt ../evidence/lab-4-3/apply.txt
+
+      - name: "4. Sign the evidence bundle with Cosign (keyless, via GitHub OIDC)"
+        id: sign
+        if: always()
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null 2>&1; then SHASUM="sha256sum"
+          elif command -v shasum >/dev/null 2>&1; then SHASUM="shasum -a 256"
+          else echo "Need sha256sum or shasum" >&2; exit 2; fi
+
+          mkdir -p evidence/lab-4-3 evidence/lab-4-4
+          BUNDLE="evidence-${RUN_ID}-${SHA}.tar.gz"
+          ( cd evidence/lab-4-3 && tar czf "../../${BUNDLE}" . )
+          $SHASUM "${BUNDLE}" | awk '{print $1}' > "${BUNDLE}.sha256"
+
+          cosign sign-blob --yes --bundle "${BUNDLE}.sig.bundle" "${BUNDLE}"
+
+          echo "BUNDLE=${BUNDLE}" >> "$GITHUB_ENV"
+
+      - name: "5. Upload the signed bundle to the evidence vault"
+        id: upload
+        if: always() && env.BUNDLE != ''
+        env:
+          VAULT: ${{ vars.EVIDENCE_VAULT }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          KEY_PREFIX="runs/${RUN_ID}"
+          aws s3 cp "${BUNDLE}"            "s3://${VAULT}/${KEY_PREFIX}/${BUNDLE}"
+          aws s3 cp "${BUNDLE}.sha256"     "s3://${VAULT}/${KEY_PREFIX}/${BUNDLE}.sha256"
+          aws s3 cp "${BUNDLE}.sig.bundle" "s3://${VAULT}/${KEY_PREFIX}/${BUNDLE}.sig.bundle"
+
+          VERSION_ID=$(aws s3api head-object --bucket "${VAULT}" --key "${KEY_PREFIX}/${BUNDLE}" --query VersionId --output text)
+          cat > receipt.json <<EOF
+          {
+            "run_id":"${RUN_ID}",
+            "vault":"${VAULT}",
+            "bundle_key":"${KEY_PREFIX}/${BUNDLE}",
+            "version_id":"${VERSION_ID}",
+            "sha256":"$(cat ${BUNDLE}.sha256)",
+            "commit":"${SHA}"
+          }
+          EOF
+          aws s3 cp receipt.json "s3://${VAULT}/${KEY_PREFIX}/receipt.json"
+          mkdir -p evidence/lab-4-4
+          cp receipt.json evidence/lab-4-4/receipt.json
+
+      - name: Upload evidence artifact
+        # Extra. GitHub Actions copy of the same files; the vault upload in step 5 is the assessor copy.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grc-evidence-${{ github.run_id }}
+          path: |
+            evidence/lab-4-3/
+            evidence/lab-4-4/
+          retention-days: 90
+
+      - name: Enforce gate
+        # Extra. Sign/upload use if: always() so a red PR still leaves vault evidence.
+        # This step is what keeps the job red when Conftest failed.
+        if: always()
+        run: |
+          test "${{ steps.conftest.outcome }}" = "success"
