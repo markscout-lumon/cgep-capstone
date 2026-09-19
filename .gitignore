@@ -1,0 +1,19 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+tfplan
+*.tfplan
+plan.json
+plan.txt
+crash.log
+
+# Lambda build
+terraform/lambda/handler.zip
+
+# Local
+evidence/
+.DS_Store
